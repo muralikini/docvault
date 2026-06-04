@@ -130,6 +130,7 @@
 
         let currentUser = null;
         let currentTab = 'dashboard';
+        let editingDocId = null;
         let editingUserId = null;
         let editingDocTypeId = null;
 
@@ -594,8 +595,8 @@
                     createdAt: new Date().toISOString()
                 };
 
-                if (currentDocumentId) {
-                    await db.collection('documents').doc(currentDocumentId).update(docData);
+                if (editingDocId) {
+                    await db.collection('documents').doc(editingDocId).update(docData);
                 } else {
                     await db.collection('documents').add(docData);
                 }
@@ -638,14 +639,16 @@
             container.innerHTML = html;
         }
 
-        function showDocumentForm() {
-            currentDocumentId = null;
-            currentFrontFile = null;
-            currentBackFile = null;
+       function showDocumentForm() {
+            editingDocId = null;
+            document.getElementById('formTitle').textContent = "Add New Document";
             document.getElementById('documentForm').style.display = 'block';
             document.getElementById('frontPreview').innerHTML = '';
             document.getElementById('backPreview').innerHTML = '';
+            currentFrontFile = null;
+            currentBackFile = null;
         }
+
 
         function hideDocumentForm() {
             document.getElementById('documentForm').style.display = 'none';
@@ -683,8 +686,8 @@
 
         // EDIT DOCUMENT
         async function editDocument(id) {
-            const doc = await db.collection('documents').doc(id).get();
-            const d = doc.data();
+            const docSnap = await db.collection('documents').doc(id).get();
+            const d = docSnap.data();
             editingDocId = id;
 
             document.getElementById('formTitle').textContent = "Edit Document";
@@ -694,10 +697,9 @@
             document.getElementById('docNumber').value = d.number || '';
             document.getElementById('issueDate').value = d.issueDate || '';
             document.getElementById('expiryDate').value = d.expiryDate || '';
-
-            document.getElementById('frontPreview').innerHTML = d.frontURL ? `<img src="${d.frontURL}" class="photo-preview">` : '';
-            document.getElementById('backPreview').innerHTML = d.backURL ? `<img src="${d.backURL}" class="photo-preview">` : '';
         }
+
+        
         async function deleteDocument(id) {
             if (confirm("Delete this document?")) {
                 await db.collection('documents').doc(id).delete();
