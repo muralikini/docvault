@@ -656,28 +656,35 @@
 
        // VIEW DOCUMENT
         async function viewDocument(id) {
-            try {
-                const docSnap = await db.collection('documents').doc(id).get();
-                if (!docSnap.exists) return alert("Document not found");
+            const docSnap = await db.collection('documents').doc(id).get();
+            const d = docSnap.data();
 
-                const d = docSnap.data();
+            let body = `
+                <p><strong>Type:</strong> ${d.type}</p>
+                <p><strong>Number:</strong> ${d.number || 'N/A'}</p>
+                <p><strong>Issue Date:</strong> ${d.issueDate || 'N/A'}</p>
+                <p><strong>Expiry Date:</strong> ${d.expiryDate || 'N/A'}</p>
+            `;
 
-                let body = `
-                    <p><strong>Type:</strong> ${d.type}</p>
-                    <p><strong>Number:</strong> ${d.number || 'N/A'}</p>
-                    <p><strong>Issue Date:</strong> ${d.issueDate || 'N/A'}</p>
-                    <p><strong>Expiry Date:</strong> ${d.expiryDate || 'N/A'}</p>
-                `;
-
-                if (d.frontURL) body += `<p><strong>Front Photo:</strong><br><img src="${d.frontURL}" class="photo-preview"></p>`;
-                if (d.backURL) body += `<p><strong>Back Photo:</strong><br><img src="${d.backURL}" class="photo-preview"></p>`;
-
-                document.getElementById('modalTitle').textContent = d.type;
-                document.getElementById('modalBody').innerHTML = body;
-                document.getElementById('viewModal').style.display = 'block';
-            } catch (e) {
-                alert("Error loading document: " + e.message);
+            if (d.frontURL) {
+                body += `
+                    <p><strong>Front Photo:</strong><br>
+                    <img src="${d.frontURL}" class="photo-preview"><br>
+                    <a href="${d.frontURL}" download class="btn btn-download">⬇️ Download Front</a>
+                    </p>`;
             }
+
+            if (d.backURL) {
+                body += `
+                    <p><strong>Back Photo:</strong><br>
+                    <img src="${d.backURL}" class="photo-preview"><br>
+                    <a href="${d.backURL}" download class="btn btn-download">⬇️ Download Back</a>
+                    </p>`;
+            }
+
+            document.getElementById('modalTitle').textContent = d.type;
+            document.getElementById('modalBody').innerHTML = body;
+            document.getElementById('viewModal').style.display = 'block';
         }
 
         function closeModal() {
