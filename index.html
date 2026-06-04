@@ -152,7 +152,6 @@
         async function login() {
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
-
             const snap = await db.collection('users').where('username', '==', username).get();
             if (!snap.empty) {
                 const userData = snap.docs[0].data();
@@ -160,6 +159,7 @@
                     currentUser = { id: snap.docs[0].id, ...userData };
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('mainApp').style.display = 'block';
+                    currentTab = currentUser.role === 'admin' ? 'admin' : 'dashboard';
                     renderTabs();
                     renderContent();
                     return;
@@ -173,8 +173,13 @@
         function renderTabs() {
             const div = document.getElementById('tabs');
             div.innerHTML = '';
+
             modules.forEach(m => {
-                if (m.id === 'admin' && currentUser.role !== 'admin') return;
+                // Admin sees ONLY Admin Panel
+                if (currentUser.role === 'admin' && m.id !== 'admin') return;
+                // Normal users don't see Admin Panel
+                if (currentUser.role !== 'admin' && m.id === 'admin') return;
+
                 const btn = document.createElement('button');
                 btn.className = `tab ${m.id === currentTab ? 'active' : ''}`;
                 btn.textContent = m.name;
@@ -203,7 +208,6 @@
             content.innerHTML += `
                 <h3>User Management</h3>
                 <button class="btn btn-primary" onclick="showUserForm()">+ Create New User + Family Member</button>
-                
                 <table id="usersTable">
                     <thead><tr><th>Username</th><th>Role</th><th>Family Member</th><th>Actions</th></tr></thead>
                     <tbody></tbody>
@@ -211,11 +215,10 @@
 
                 <hr>
                 <h3>Document Types Management</h3>
-                <div style="display:flex; gap:10px; margin-bottom:15px;">
+                <div style="display:flex; gap:10px; margin:15px 0;">
                     <input type="text" id="newDocType" placeholder="e.g. PAN Card, Aadhar Card" style="flex:1; padding:12px;">
                     <button class="btn btn-primary" onclick="addOrUpdateDocType()">Add / Update Type</button>
                 </div>
-                
                 <table id="docTypesTable">
                     <thead><tr><th>Document Type</th><th>Actions</th></tr></thead>
                     <tbody></tbody>
