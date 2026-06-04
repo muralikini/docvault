@@ -655,7 +655,7 @@
         }
 
        // VIEW DOCUMENT
-        async function viewDocument(id) {
+        /*async function viewDocument(id) {
             const docSnap = await db.collection('documents').doc(id).get();
             const d = docSnap.data();
 
@@ -686,7 +686,50 @@
             document.getElementById('modalBody').innerHTML = body;
             document.getElementById('viewModal').style.display = 'block';
         }
+                    */
+        
 
+        async function viewDocument(id) {
+            const docSnap = await db.collection('documents').doc(id).get();
+            const d = docSnap.data();
+
+            let body = `
+                <p><strong>Type:</strong> ${d.type}</p>
+                <p><strong>Number:</strong> ${d.number || 'N/A'}</p>
+                <p><strong>Issue Date:</strong> ${d.issueDate || 'N/A'}</p>
+                <p><strong>Expiry Date:</strong> ${d.expiryDate || 'N/A'}</p>
+            `;
+
+            const shareText = `Document: ${d.type} - ${d.number || ''} | Expiry: ${d.expiryDate || 'N/A'}`;
+
+            if (d.frontURL) {
+                body += `
+                    <p><strong>Front Photo:</strong><br>
+                    <img src="${d.frontURL}" class="photo-preview"><br>
+                    <a href="${d.frontURL}" download class="btn btn-download">⬇️ Download Front</a>
+                    <a href="https://wa.me/?text=${encodeURIComponent(shareText + ' - Front: ' + d.frontURL)}" target="_blank" class="btn btn-share">📱 Share on WhatsApp</a>
+                    </p>`;
+            }
+
+            if (d.backURL) {
+                body += `
+                    <p><strong>Back Photo:</strong><br>
+                    <img src="${d.backURL}" class="photo-preview"><br>
+                    <a href="${d.backURL}" download class="btn btn-download">⬇️ Download Back</a>
+                    <a href="https://wa.me/?text=${encodeURIComponent(shareText + ' - Back: ' + d.backURL)}" target="_blank" class="btn btn-share">📱 Share on WhatsApp</a>
+                    </p>`;
+            }
+
+            // Email Share
+            body += `
+                <p>
+                    <a href="mailto:?subject=Shared Document - ${d.type}&body=${encodeURIComponent(shareText)}" class="btn btn-primary">✉️ Share via Email</a>
+                </p>`;
+
+            document.getElementById('modalTitle').textContent = d.type;
+            document.getElementById('modalBody').innerHTML = body;
+            document.getElementById('viewModal').style.display = 'block';
+        }
         function closeModal() {
             document.getElementById('viewModal').style.display = 'none';
         }
