@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔐 DocVault</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <style>
+        :root { --bg: #f8fafc; --card: #ffffff; --text: #1f2937; --border: #e2e8f0; --primary: #1e40af; }
+        body.dark { --bg: #0f172a; --card: #1e2937; --text: #e2e8f0; --border: #475569; --primary: #3b82f6; }
+        body { font-family: Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+        header { background: var(--primary); color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 15px; }
+
+        .tabs { display: flex; overflow-x: auto; gap: 8px; padding: 10px 0; }
+        .tab { padding: 10px 20px; background: #e2e8f0; border: none; border-radius: 9999px; white-space: nowrap; font-weight: bold; }
+        body.dark .tab { background: #334155; color: #cbd5e1; }
+        .tab.active { background: var(--primary); color: white; }
+
+        .content { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+
+        /* Fixed & Clean Form */
+        .form-container { 
+            background: var(--card); 
+            padding: 25px; 
+            border-radius: 12px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08); 
+            margin: 20px 0; 
+            display: none; 
+        }
+        .form-grid { 
+            display: grid; 
+            grid-template-columns: 1fr; 
+            gap: 20px; 
+        }
+        @media (min-width: 768px) {
+            .form-grid { grid-template-columns: 1fr 1fr; }
+        }
+
+        .form-group { margin-bottom: 20px; }
+        .form-group label { 
+            display: block; 
+            margin-bottom: 8px; 
+            font-weight: 600; 
+        }
+        .form-group input, .form-group select { 
+            width: 100%; 
+            padding: 14px; 
+            border: 1px solid var(--border); 
+            border-radius: 8px; 
+            font-size: 16px; 
+            box-sizing: border-box;
+        }
+
+        .full-width { grid-column: 1 / -1; }
+
+        .btn { 
+            padding: 14px 24px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-weight: bold; 
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-danger { background: #ef4444; color: white; }
+
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { padding: 12px; border: 1px solid var(--border); text-align: left; }
+        th { background: #f1f5f9; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; }
+        .modal-content { background: white; margin: 5% auto; padding: 25px; width: 90%; max-width: 650px; border-radius: 12px; max-height: 90vh; overflow-y: auto; }
+        body.dark .modal-content { background: #1e2937; color: #e2e8f0; }
+    </style>
+</head>
+<body onload="loadDarkMode()">
+
+    <!-- LOGIN -->
+    <div id="loginScreen" style="max-width: 420px; margin: 80px auto; padding: 40px; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); text-align: center;">
+        <h1>🔐 DocVault</h1>
+        <h2>Family Document Manager</h2>
+        <input type="text" id="username" value="admin" placeholder="Username"><br><br>
+        <input type="password" id="password" value="admin123" placeholder="Password"><br><br>
+        <button onclick="login()" class="btn btn-primary" style="width:100%;">Login</button>
+        <p id="errorMsg" style="color:red; margin-top:10px;"></p>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="mainApp" style="display:none;">
+        <header>
+            <div>🔐 DocVault</div>
+            <div>
+                <button onclick="toggleDarkMode()" style="margin-right:10px;">🌙</button>
+                <button onclick="logout()" class="btn btn-danger">Logout</button>
+            </div>
+        </header>
+
+        <div class="container">
+            <div class="tabs" id="tabs"></div>
+            <div class="content" id="content"></div>
+        </div>
+    </div>
+
+    <!-- VIEW MODAL -->
+    <div id="viewModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle" style="margin-top:0;">Document Details</h3>
+            <div id="modalBody"></div>
+            <br>
+            <button class="btn btn-danger" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+          apiKey: "AIzaSyBcy985RTDiohuTBR59EY6enkPlCH_JA_A",
+          authDomain: "docvault-b944a.firebaseapp.com",
+          projectId: "docvault-b944a",
+          storageBucket: "docvault-b944a.firebasestorage.app",
+          messagingSenderId: "709408899087",
+          appId: "1:709408899087:web:5e44724646882f2415637a"
+        };
+
+        const app = firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+
+        let currentUser = null;
+        let currentTab = 'dashboard';
+        let editingUserId = null;
+        let editingDocTypeId = null;
+
+        const modules = [
+            { id: 'dashboard', name: 'Dashboard' },
+            { id: 'member', name: 'Member Info' },
+            { id: 'documents', name: 'Documents' },
+            { id: 'admin', name: 'Admin Panel' }
+        ];
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark'));
+        }
+
+        function loadDarkMode() {
+            if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark');
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            const snap = await db.collection('users').where('username', '==', username).get();
+            if (!snap.empty) {
+                const userData = snap.docs[0].data();
+                if (userData.password === password) {
+                    currentUser = { id: snap.docs[0].id, ...userData };
+                    document.getElementById('loginScreen').style.display = 'none';
+                    document.getElementById('mainApp').style.display = 'block';
+                    renderTabs();
+                    renderContent();
+                    return;
+                }
+            }
+            document.getElementById('errorMsg').textContent = "Invalid credentials";
+        }
+
+        function logout() { if (confirm("Logout?")) location.reload(); }
+
+        function renderTabs() {
+            const div = document.getElementById('tabs');
+            div.innerHTML = '';
+            modules.forEach(m => {
+                if (m.id === 'admin' && currentUser.role !== 'admin') return;
+                const btn = document.createElement('button');
+                btn.className = `tab ${m.id === currentTab ? 'active' : ''}`;
+                btn.textContent = m.name;
+                btn.onclick = () => { currentTab = m.id; renderTabs(); renderContent(); };
+                div.appendChild(btn);
+            });
+        }
+
+        function renderContent() {
+            const content = document.getElementById('content');
+            content.innerHTML = `<h2>${modules.find(m => m.id === currentTab).name}</h2>`;
+
+            if (currentTab === 'dashboard') renderDashboard();
+            else if (currentTab === 'member') renderMemberInfo();
+            else if (currentTab === 'documents') renderDocuments();
+            else if (currentTab === 'admin') renderAdminPanel();
+        }
+
+        function renderDashboard() { document.getElementById('content').innerHTML += `<p>Welcome, <strong>${currentUser.username}</strong></p>`; }
+        //function renderMemberInfo() { document.getElementById('content').innerHTML += `<p>Member Info - Under Development</p>`; }
+        //function renderDocuments() { document.getElementById('content').innerHTML += `<p>Documents - Under Development</p>`; }
+
+        // ====================== ADMIN PANEL ======================
+        async function renderAdminPanel() {
+            const content = document.getElementById('content');
+            content.innerHTML += `
+                <h3>User Management</h3>
+                <button class="btn btn-primary" onclick="showUserForm()">+ Create New User + Family Member</button>
+                
+                <table id="usersTable">
+                    <thead><tr><th>Username</th><th>Role</th><th>Family Member</th><th>Actions</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+
+                <hr>
+                <h3>Document Types Management</h3>
+                <div style="display:flex; gap:10px; margin-bottom:15px;">
+                    <input type="text" id="newDocType" placeholder="e.g. PAN Card, Aadhar Card" style="flex:1; padding:12px;">
+                    <button class="btn btn-primary" onclick="addOrUpdateDocType()">Add / Update Type</button>
+                </div>
+                
+                <table id="docTypesTable">
+                    <thead><tr><th>Document Type</th><th>Actions</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            `;
+
+            loadUsersTable();
+            loadDocumentTypes();
+        }
+
+        function showUserForm(user = null) {
+            editingUserId = user ? user.id : null;
+            const title = user ? "Edit User" : "Create New User + Family Member";
+
+            const oldForm = document.getElementById('userForm');
+            if (oldForm) oldForm.remove();
+
+            const formHTML = `
+                <div id="userForm" style="background:#f8fafc; padding:20px; border-radius:12px; margin:20px 0;">
+                    <h4>${title}</h4>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Username</label><input type="text" id="newUsername" value="${user ? user.username : ''}"></div>
+                        <div class="form-group"><label>Password ${user ? '(leave blank to keep current)' : ''}</label><input type="password" id="newPassword"></div>
+                        <div class="form-group"><label>Role</label>
+                            <select id="newRole">
+                                <option value="user" ${user && user.role === 'user' ? 'selected' : ''}>User</option>
+                                <option value="admin" ${user && user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                            </select>
+                        </div>
+                        <div class="form-group full-width"><label>Family Member Name</label><input type="text" id="familyName" value="${user ? (user.familyName || '') : ''}"></div>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveUser()">Save User & Family Member</button>
+                    <button class="btn btn-danger" onclick="hideUserForm()">Cancel</button>
+                </div>
+            `;
+            document.getElementById('content').insertAdjacentHTML('beforeend', formHTML);
+        }
+
+        function hideUserForm() {
+            const form = document.getElementById('userForm');
+            if (form) form.remove();
+        }
+
+        async function saveUser() {
+            const username = document.getElementById('newUsername').value.trim();
+            const password = document.getElementById('newPassword').value.trim();
+            const role = document.getElementById('newRole').value;
+            const familyName = document.getElementById('familyName').value.trim();
+
+            if (!username) return alert("Username is required");
+            if (!editingUserId && !password) return alert("Password is required for new user");
+
+            try {
+                if (editingUserId) {
+                    await db.collection('users').doc(editingUserId).update({ username, role, ...(password ? {password} : {}) });
+                } else {
+                    const userRef = await db.collection('users').add({ username, password, role });
+                    await db.collection('family').add({ name: familyName || username, relation: "Self", createdBy: userRef.id });
+                }
+                alert("✅ Saved successfully!");
+                hideUserForm();
+                loadUsersTable();
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        }
+
+        async function loadUsersTable() {
+            const { docs } = await db.collection('users').get();
+            const tbody = document.querySelector('#usersTable tbody');
+            tbody.innerHTML = '';
+
+            docs.forEach(doc => {
+                const u = doc.data();
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${u.username}</td>
+                    <td>${u.role}</td>
+                    <td>Linked</td>
+                    <td>
+                        ${u.username !== 'admin' ? `<button class="btn btn-primary" onclick="editUser('${doc.id}')">Edit</button>` : ''}
+                        ${u.username !== 'admin' ? `<button class="btn btn-danger" onclick="deleteUser('${doc.id}')">Delete</button>` : ''}
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function editUser(id) {
+            db.collection('users').doc(id).get().then(doc => {
+                if (doc.exists) showUserForm({ id: doc.id, ...doc.data() });
+            });
+        }
+
+        async function deleteUser(id) {
+            if (confirm("Delete this user?")) {
+                await db.collection('users').doc(id).delete();
+                loadUsersTable();
+            }
+        }
+
+        // ==================== DOCUMENT TYPES ====================
+        async function addOrUpdateDocType() {
+            const name = document.getElementById('newDocType').value.trim();
+            if (!name) return alert("Please enter document type name");
+
+            try {
+                if (editingDocTypeId) {
+                    await db.collection('documentTypes').doc(editingDocTypeId).update({ name });
+                    editingDocTypeId = null;
+                } else {
+                    await db.collection('documentTypes').add({ name, createdAt: new Date().toISOString() });
+                }
+                document.getElementById('newDocType').value = '';
+                alert("✅ Document Type saved successfully!");
+                loadDocumentTypes();
+            } catch (error) {
+                console.error(error);
+                alert("Error saving document type: " + error.message);
+            }
+        }
+
+        async function loadDocumentTypes() {
+            const { docs } = await db.collection('documentTypes').get();
+            const tbody = document.querySelector('#docTypesTable tbody');
+            tbody.innerHTML = '';
+
+            docs.forEach(doc => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${doc.data().name}</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="editDocType('${doc.id}', '${doc.data().name}')">Edit</button>
+                        <button class="btn btn-danger" onclick="deleteDocType('${doc.id}')">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function editDocType(id, name) {
+            editingDocTypeId = id;
+            document.getElementById('newDocType').value = name;
+        }
+
+        async function deleteDocType(id) {
+            if (confirm("Delete this document type?")) {
+                await db.collection('documentTypes').doc(id).delete();
+                loadDocumentTypes();
+            }
+        }
+
+
+        // ====================== MEMBER INFO TAB (Fully Functional) ======================
+        async function renderMemberInfo() {
+            const content = document.getElementById('content');
+            content.innerHTML += `
+                <button class="btn btn-primary" onclick="showMemberForm()">+ Update My Information</button>
+
+                <div id="memberForm" style="display:none; background:#f8fafc; padding:20px; border-radius:12px; margin:20px 0;">
+                    <h3>My Personal Information</h3>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Full Name</label><input type="text" id="mName" readonly></div>
+                        <div class="form-group"><label>Relation</label><input type="text" id="mRelation" value="Self" readonly></div>
+                        <div class="form-group"><label>Date of Birth</label><input type="date" id="mDOB"></div>
+                        <div class="form-group"><label>Phone Number</label><input type="text" id="mPhone"></div>
+                        <div class="form-group"><label>Email</label><input type="email" id="mEmail"></div>
+                        <div class="form-group full-width"><label>Address</label><input type="text" id="mAddress"></div>
+                    </div>
+
+                    <div style="margin:20px 0;">
+                        <label>Profile Photo</label><br>
+                        <input type="file" id="mPhoto" accept="image/*" onchange="previewMemberPhoto(event)">
+                        <div id="memberPhotoPreview"></div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="saveMemberInfo()">Save Information</button>
+                    <button class="btn btn-danger" onclick="hideMemberForm()">Cancel</button>
+                </div>
+
+                <h3>My Current Information</h3>
+                <div id="currentMemberInfo" style="padding:20px; background:#f8fafc; border-radius:8px;"></div>
+            `;
+
+            loadCurrentMemberInfo();
+        }
+
+        function previewMemberPhoto(e) {
+            const file = e.target.files[0];
+            if (file) {
+                currentPhotoFile = file;
+                document.getElementById('memberPhotoPreview').innerHTML = `<img src="${URL.createObjectURL(file)}" class="photo-preview">`;
+            }
+        }
+
+        async function loadCurrentMemberInfo() {
+            const { docs } = await db.collection('family').where('createdBy', '==', currentUser.id).get();
+            const container = document.getElementById('currentMemberInfo');
+
+            if (docs.length === 0) {
+                container.innerHTML = `<p>No information saved yet. Click "Update My Information".</p>`;
+                return;
+            }
+
+            const member = docs[0].data();
+            currentMemberId = docs[0].id;
+
+            container.innerHTML = `
+                <p><strong>Name:</strong> ${member.name}</p>
+                <p><strong>DOB:</strong> ${member.dob || 'Not set'}</p>
+                <p><strong>Phone:</strong> ${member.phone || 'Not set'}</p>
+                <p><strong>Email:</strong> ${member.email || 'Not set'}</p>
+                <p><strong>Address:</strong> ${member.address || 'Not set'}</p>
+                ${member.photoURL ? `<img src="${member.photoURL}" class="photo-preview">` : '<p>No photo uploaded</p>'}
+            `;
+
+            // Pre-fill form
+            document.getElementById('mName').value = member.name || currentUser.username;
+            document.getElementById('mDOB').value = member.dob || '';
+            document.getElementById('mPhone').value = member.phone || '';
+            document.getElementById('mEmail').value = member.email || '';
+            document.getElementById('mAddress').value = member.address || '';
+        }
+
+        function showMemberForm() {
+            document.getElementById('memberForm').style.display = 'block';
+            document.getElementById('memberPhotoPreview').innerHTML = '';
+            currentPhotoFile = null;
+        }
+
+        function hideMemberForm() {
+            document.getElementById('memberForm').style.display = 'none';
+        }
+
+        async function saveMemberInfo() {
+            const name = document.getElementById('mName').value.trim();
+            if (!name) return alert("Name is required");
+
+            let photoURL = '';
+
+            try {
+                if (currentPhotoFile) {
+                    const storageRef = storage.ref('member-photos/' + Date.now() + '_' + currentPhotoFile.name);
+                    await storageRef.put(currentPhotoFile);
+                    photoURL = await storageRef.getDownloadURL();
+                }
+
+                const memberData = {
+                    name: name,
+                    dob: document.getElementById('mDOB').value,
+                    phone: document.getElementById('mPhone').value,
+                    email: document.getElementById('mEmail').value,
+                    address: document.getElementById('mAddress').value,
+                    updatedAt: new Date().toISOString(),
+                    createdBy: currentUser.id
+                };
+
+                if (photoURL) memberData.photoURL = photoURL;
+
+                if (currentMemberId) {
+                    await db.collection('family').doc(currentMemberId).update(memberData);
+                } else {
+                    const newDoc = await db.collection('family').add(memberData);
+                    currentMemberId = newDoc.id;
+                }
+
+                alert("✅ Information saved successfully!");
+                hideMemberForm();
+                loadCurrentMemberInfo();
+
+            } catch (error) {
+                console.error(error);
+                alert("Error saving information: " + error.message);
+            }
+        }
+
+        // ====================== DOCUMENTS TAB - FULLY FUNCTIONAL ======================
+        async function renderDocuments() {
+            const content = document.getElementById('content');
+            content.innerHTML += `
+                <button class="btn btn-primary" onclick="showDocumentForm()">+ Add New Document</button>
+
+                <div id="documentForm" style="display:none; background:#f8fafc; padding:20px; border-radius:12px; margin:20px 0;">
+                    <h3 id="formTitle">Add New Document</h3>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Document Type</label><select id="docType"></select></div>
+                        <div class="form-group"><label>Document Number</label><input type="text" id="docNumber"></div>
+                        <div class="form-group"><label>Issue Date</label><input type="date" id="issueDate"></div>
+                        <div class="form-group"><label>Expiry Date</label><input type="date" id="expiryDate"></div>
+                    </div>
+
+                    <div style="margin:15px 0;">
+                        <label>Front Photo</label><br>
+                        <input type="file" id="frontPhoto" accept="image/*" onchange="previewFront(event)">
+                        <div id="frontPreview"></div>
+                    </div>
+
+                    <div style="margin:15px 0;">
+                        <label>Back Photo (Optional)</label><br>
+                        <input type="file" id="backPhoto" accept="image/*" onchange="previewBack(event)">
+                        <div id="backPreview"></div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="saveDocument()">Save Document</button>
+                    <button class="btn btn-danger" onclick="hideDocumentForm()">Cancel</button>
+                </div>
+
+                <h3>My Documents</h3>
+                <div id="documentsList"></div>
+            `;
+
+            loadDocumentTypesForDropdown();
+            loadMyDocuments();
+        }
+
+        let currentFrontFile = null;
+        let currentBackFile = null;
+
+        function previewFront(e) {
+            const file = e.target.files[0];
+            if (file) {
+                currentFrontFile = file;
+                document.getElementById('frontPreview').innerHTML = `<img src="${URL.createObjectURL(file)}" class="photo-preview">`;
+            }
+        }
+
+        function previewBack(e) {
+            const file = e.target.files[0];
+            if (file) {
+                currentBackFile = file;
+                document.getElementById('backPreview').innerHTML = `<img src="${URL.createObjectURL(file)}" class="photo-preview">`;
+            }
+        }
+
+        async function loadDocumentTypesForDropdown() {
+            const { docs } = await db.collection('documentTypes').get();
+            const select = document.getElementById('docType');
+            select.innerHTML = '<option value="">-- Select Document Type --</option>';
+            docs.forEach(doc => {
+                const opt = document.createElement('option');
+                opt.value = doc.data().name;
+                opt.textContent = doc.data().name;
+                select.appendChild(opt);
+            });
+        }
+
+        async function saveDocument() {
+            const type = document.getElementById('docType').value;
+            if (!type) return alert("Please select document type");
+
+            let frontURL = '', backURL = '';
+
+            try {
+                if (currentFrontFile) {
+                    const ref = storage.ref('documents/' + Date.now() + '_front_' + currentFrontFile.name);
+                    await ref.put(currentFrontFile);
+                    frontURL = await ref.getDownloadURL();
+                }
+                if (currentBackFile) {
+                    const ref = storage.ref('documents/' + Date.now() + '_back_' + currentBackFile.name);
+                    await ref.put(currentBackFile);
+                    backURL = await ref.getDownloadURL();
+                }
+
+                const docData = {
+                    type: type,
+                    number: document.getElementById('docNumber').value,
+                    issueDate: document.getElementById('issueDate').value,
+                    expiryDate: document.getElementById('expiryDate').value,
+                    frontURL: frontURL,
+                    backURL: backURL,
+                    createdBy: currentUser.id,
+                    createdAt: new Date().toISOString()
+                };
+
+                if (currentDocumentId) {
+                    await db.collection('documents').doc(currentDocumentId).update(docData);
+                } else {
+                    await db.collection('documents').add(docData);
+                }
+
+                alert("✅ Document saved successfully!");
+                hideDocumentForm();
+                loadMyDocuments();
+
+            } catch (error) {
+                alert("Error saving document: " + error.message);
+            }
+        }
+
+        async function loadMyDocuments() {
+            const { docs } = await db.collection('documents').where('createdBy', '==', currentUser.id).get();
+            const container = document.getElementById('documentsList');
+            container.innerHTML = '';
+
+            if (docs.length === 0) {
+                container.innerHTML = '<p>No documents found.</p>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>Type</th><th>Number</th><th>Expiry</th><th>Actions</th></tr></thead><tbody>';
+            docs.forEach(doc => {
+                const d = doc.data();
+                html += `
+                    <tr>
+                        <td>${d.type}</td>
+                        <td>${d.number || '-'}</td>
+                        <td>${d.expiryDate || '-'}</td>
+                        <td>
+                            <button class="btn btn-primary" onclick="viewDocument('${doc.id}')">View</button>
+                            <button class="btn btn-primary" onclick="editDocument('${doc.id}')">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteDocument('${doc.id}')">Delete</button>
+                        </td>
+                    </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function showDocumentForm() {
+            currentDocumentId = null;
+            currentFrontFile = null;
+            currentBackFile = null;
+            document.getElementById('documentForm').style.display = 'block';
+            document.getElementById('frontPreview').innerHTML = '';
+            document.getElementById('backPreview').innerHTML = '';
+        }
+
+        function hideDocumentForm() {
+            document.getElementById('documentForm').style.display = 'none';
+        }
+
+       // VIEW DOCUMENT
+        async function viewDocument(id) {
+            try {
+                const docSnap = await db.collection('documents').doc(id).get();
+                if (!docSnap.exists) return alert("Document not found");
+
+                const d = docSnap.data();
+
+                let body = `
+                    <p><strong>Type:</strong> ${d.type}</p>
+                    <p><strong>Number:</strong> ${d.number || 'N/A'}</p>
+                    <p><strong>Issue Date:</strong> ${d.issueDate || 'N/A'}</p>
+                    <p><strong>Expiry Date:</strong> ${d.expiryDate || 'N/A'}</p>
+                `;
+
+                if (d.frontURL) body += `<p><strong>Front Photo:</strong><br><img src="${d.frontURL}" class="photo-preview"></p>`;
+                if (d.backURL) body += `<p><strong>Back Photo:</strong><br><img src="${d.backURL}" class="photo-preview"></p>`;
+
+                document.getElementById('modalTitle').textContent = d.type;
+                document.getElementById('modalBody').innerHTML = body;
+                document.getElementById('viewModal').style.display = 'block';
+            } catch (e) {
+                alert("Error loading document: " + e.message);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('viewModal').style.display = 'none';
+        }
+
+        // EDIT DOCUMENT
+        async function editDocument(id) {
+            const doc = await db.collection('documents').doc(id).get();
+            const d = doc.data();
+            editingDocId = id;
+
+            document.getElementById('formTitle').textContent = "Edit Document";
+            document.getElementById('documentForm').style.display = 'block';
+
+            document.getElementById('docType').value = d.type || '';
+            document.getElementById('docNumber').value = d.number || '';
+            document.getElementById('issueDate').value = d.issueDate || '';
+            document.getElementById('expiryDate').value = d.expiryDate || '';
+
+            document.getElementById('frontPreview').innerHTML = d.frontURL ? `<img src="${d.frontURL}" class="photo-preview">` : '';
+            document.getElementById('backPreview').innerHTML = d.backURL ? `<img src="${d.backURL}" class="photo-preview">` : '';
+        }
+        async function deleteDocument(id) {
+            if (confirm("Delete this document?")) {
+                await db.collection('documents').doc(id).delete();
+                loadMyDocuments();
+            }
+        }
+
+        // Initialize Default Admin
+        async function initDefaultAdmin() {
+            const snap = await db.collection('users').where('username', '==', 'admin').get();
+            if (snap.empty) {
+                await db.collection('users').add({ username: 'admin', password: 'admin123', role: 'admin' });
+            }
+        }
+
+        // ====================== DASHBOARD - FULLY FUNCTIONAL ======================
+        async function renderDashboard() {
+            const content = document.getElementById('content');
+            content.innerHTML = `<h2>Dashboard</h2><p>Welcome back, <strong>${currentUser.username}</strong>!</p>`;
+
+            const familySnap = await db.collection('family').where('createdBy', '==', currentUser.id).get();
+            const docSnap = await db.collection('documents').where('createdBy', '==', currentUser.id).get();
+
+            const totalDocs = docSnap.size;
+            const totalMembers = familySnap.size;
+
+            let expiringSoon = 0;
+            const now = new Date();
+            const oneMonthLater = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+
+            docSnap.forEach(doc => {
+                const d = doc.data();
+                if (d.expiryDate) {
+                    const exp = new Date(d.expiryDate);
+                    if (exp > now && exp <= oneMonthLater) expiringSoon++;
+                }
+            });
+
+            content.innerHTML += `
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <h3>Total Family Members</h3>
+                        <div class="number">${totalMembers}</div>
+                    </div>
+                    <div class="card">
+                        <h3>Total Documents</h3>
+                        <div class="number">${totalDocs}</div>
+                    </div>
+                    <div class="card">
+                        <h3>Expiring Soon</h3>
+                        <div class="number" style="color:#ef4444;">${expiringSoon}</div>
+                    </div>
+                </div>
+
+                <h3>Recent Documents</h3>
+                <div id="recentDocs"></div>
+
+                <h3>Quick Actions</h3>
+                <button class="btn btn-primary" onclick="switchToTab('member')">Update My Info</button>
+                <button class="btn btn-primary" onclick="switchToTab('documents')">Add New Document</button>
+            `;
+
+            loadRecentDocuments();
+        }
+
+        function switchToTab(tabId) {
+            currentTab = tabId;
+            renderTabs();
+            renderContent();
+        }
+
+        async function loadRecentDocuments() {
+            const { docs } = await db.collection('documents')
+                .where('createdBy', '==', currentUser.id)
+                .orderBy('createdAt', 'desc')
+                .limit(5)
+                .get();
+
+            const container = document.getElementById('recentDocs');
+            if (docs.length === 0) {
+                container.innerHTML = '<p>No documents yet.</p>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>Type</th><th>Number</th><th>Expiry</th><th>Action</th></tr></thead><tbody>';
+            docs.forEach(doc => {
+                const d = doc.data();
+                html += `
+                    <tr>
+                        <td>${d.type}</td>
+                        <td>${d.number || '-'}</td>
+                        <td>${d.expiryDate || '-'}</td>
+                        <td><button class="btn btn-primary" onclick="viewDocument('${doc.id}')">View</button></td>
+                    </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        initDefaultAdmin();
+        renderTabs();
+        renderContent();
+    </script>
+</body>
+</html>
